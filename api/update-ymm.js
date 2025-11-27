@@ -1,139 +1,122 @@
-console.log("🚀 Vercel - update-ymm.js loaded successfully");
+console.log("🚨 Vercel - update-ymm.js loaded successfully");
 
-// api/update-ymm.js
 import { createClient } from "@supabase/supabase-js";
+import * as cheerio from "cheerio"; // ★ 用于解析表格
 
 export const config = { runtime: "nodejs" };
 
-// Supabase 客户端
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-/* ----------------------------------------
-   年份提取（识别范围 / 单年）
------------------------------------------ */
-function extractYears(text) {
-  if (!text) return [];
+// 解析年份（支持 2006-2008）
+function expandYearRange(yearStr) {
+  if (!yearStr) return [];
 
-  const years = new Set();
-
-  // 识别 2006–2009（长短横都支持）
-  const rangeRegex = /((19|20)\d{2})\s*[–\-]\s*((19|20)\d{2})/g;
-  let m;
-  while ((m = rangeRegex.exec(text))) {
-    const start = parseInt(m[1], 10);
-    const end = parseInt(m[3], 10);
-    for (let y = start; y <= end; y++) years.add(String(y));
+  const range = yearStr.match(/(19|20)\d{2}\s*[-–]\s*(19|20)\d{2}/);
+  if (range) {
+    let start = parseInt(range[1] + range[2], 10);
   }
 
-  // 单年份：2006
-  const singleRegex = /\b(19|20)\d{2}\b/g;
-  while ((m = singleRegex.exec(text))) years.add(m[0]);
+  const m = yearStr.match(/(19|20)\d{2}/g);
+  if (!m) return [];
 
-  return Array.from(years).sort();
+  if (m.length === 1) return [m[0]];
+
+  // 如果是 2006-2008
+  if (m.length === 2 && yearStr.includes("-")) {
+    const a = parseInt(m[0]), b = parseInt(m[1]);
+    let years = [];
+    for (let y = a; y <= b; y++) years.push(String(y));
+    return years;
+  }
+
+  return m;
 }
 
-/* ----------------------------------------
-   品牌 + 车型解析器（核心）
-   支持：
-   - "Subaru | Outback | 2006–2009 | 2.5L"
-   - "compatible for Subaru Outback 2006-2009"
-   - "fits Subaru Legacy 2010"
------------------------------------------ */
-function extractMakeModel(text) {
-  if (!text) return { brand: "", model: "" };
+// ★★★ 解析 <table> 中的 YMM 列表 ★★★
+function extractYMMfromTable(bodyHtml) {
+  const $ = cheerio.load(bodyHtml);
+  const rows = [];
 
-  // 表格格式识别：Brand | Model | Year...
-  const tableRegex = /(\b[A-Z][a-zA-Z]+)\s*\|\s*([A-Za-z0-9\- ]{2,40})\s*\|\s*(19|20)\d{2}/;
-  const t1 = tableRegex.exec(text);
-  if (t1) {
-    return {
-      brand: t1[1].trim(),
-      model: t1[2].trim()
-    };
-  }
+  $("table tbody tr").each((i, row) => {
+    const cols = $(row).find("td section.ybc-p");
 
-  // 行内识别 Fits/For/Compatible
-  const inlineRegex = /(compatible\s+for|fits|for)\s+([A-Z][a-zA-Z]+)\s+([A-Za-z0-9\- ]{2,40})\s*(19|20)\d{2}/i;
-  const t2 = inlineRegex.exec(text);
-  if (t2) {
-    return {
-      brand: t2[2].trim(),
-      model: t2[3].trim()
-    };
-  }
+    if (cols.length >= 3) {
+      const make = $(cols[0]).text().trim();
+      const model = $(cols[1]).text().trim();
+      const yearText = $(cols[2]).text().trim();
 
-  return { brand: "", model: "" };
+      const years = expandYearRange(yearText);
+
+      years.forEach((y) => {
+        rows.push({
+          brand: make,
+          model: model,
+          year: y,
+        });
+      });
+    }
+  });
+
+  return rows;
 }
 
-/* ----------------------------------------
-   主 Handler
------------------------------------------ */
 export default async function handler(req, res) {
   if (req.method !== "POST")
     return res.status(405).json({ error: "Method not allowed" });
 
   try {
     const product = req.body;
-    console.log("Product received:", product?.id, product?.title?.slice?.(0, 80));
+    const bodyHtml = product.body_html || "";
 
-    const text = `
-      ${product.title || ""}
-      ${product.body_html || product.body || ""}
-      ${(product.tags || "").toString()}
-    `;
+    // ★ 从产品页面表格解析YMM
+    const ymmList = extractYMMfromTable(bodyHtml);
 
-    /* ---- 提取年份 ---- */
-    const years = extractYears(text);
-    const targetYears = years.length ? years : [null];
+    if (!ymmList.length) {
+      console.log("❌ 没找到表格 YMM，跳过");
+      return res.status(200).json({
+        success: true,
+        message: "No YMM found in product description",
+      });
+    }
 
-    /* ---- 提取品牌 / 车型 ---- */
-    const { brand: extractedBrand, model: extractedModel } = extractMakeModel(text);
-
-    const brand = extractedBrand || product.vendor || "";
-    const model = extractedModel || "";
-
-    /* ---- 其他字段 ---- */
+    const productId = String(product.id);
+    const title = product.title || "";
+    const brandVendor = product.vendor || "";
+    const handle = product.handle || "";
     const sku = product.variants?.[0]?.sku || "";
     const image =
       product.images?.[0]?.src ||
       (product.image ? product.image.src : "") ||
       "";
 
-    const productId = String(product.id || product.product_id || "");
-    const handle = product.handle || "";
-
     const results = [];
 
-    /* ---- 为每个年份写入 YMM ---- */
-    for (const y of targetYears) {
-      const yearValue = y === null ? null : String(y);
+    for (const item of ymmList) {
+      const { brand, model, year } = item;
 
-      // 检查是否已有记录
-      const { data: existing, error: selErr } = await supabase
+      // 是否已存在？
+      const { data: existing } = await supabase
         .from("ymm")
         .select("id")
         .eq("product_id", productId)
-        .eq("year", yearValue)
+        .eq("brand", brand)
+        .eq("model", model)
+        .eq("year", year)
         .limit(1);
 
-      if (selErr) {
-        console.error("Supabase select error:", selErr);
-        results.push({ year: yearValue, ok: false, error: selErr });
-        continue;
-      }
-
-      if (existing && existing.length > 0) {
-        // UPDATE
+      if (existing && existing.length) {
         const id = existing[0].id;
-        const { data: upData, error: upErr } = await supabase
+
+        const { error: upErr } = await supabase
           .from("ymm")
           .update({
-            title: product.title,
+            title,
             brand,
             model,
+            year,
             sku,
             handle,
             image,
@@ -141,23 +124,22 @@ export default async function handler(req, res) {
           })
           .eq("id", id);
 
-        if (upErr) {
-          console.error("Supabase update error:", upErr);
-          results.push({ year: yearValue, ok: false, error: upErr });
-        } else {
-          results.push({ year: yearValue, ok: true, action: "updated" });
-        }
+        results.push({
+          brand,
+          model,
+          year,
+          action: upErr ? "update_failed" : "updated",
+        });
       } else {
-        // INSERT
-        const { data: insData, error: insErr } = await supabase
+        const { error: insErr } = await supabase
           .from("ymm")
           .insert([
             {
               product_id: productId,
-              title: product.title,
+              title,
               brand,
               model,
-              year: yearValue,
+              year,
               sku,
               handle,
               image,
@@ -166,19 +148,18 @@ export default async function handler(req, res) {
             },
           ]);
 
-        if (insErr) {
-          console.error("Supabase insert error:", insErr);
-          results.push({ year: yearValue, ok: false, error: insErr });
-        } else {
-          results.push({ year: yearValue, ok: true, action: "inserted" });
-        }
+        results.push({
+          brand,
+          model,
+          year,
+          action: insErr ? "insert_failed" : "inserted",
+        });
       }
     }
 
-    console.log("YMM results:", results);
     return res.status(200).json({ success: true, results });
   } catch (err) {
-    console.error("❌ Update YMM failed:", err);
-    return res.status(500).json({ success: false, error: err?.message || err });
+    console.error("Update YMM failed:", err);
+    return res.status(500).json({ error: err.message });
   }
 }
