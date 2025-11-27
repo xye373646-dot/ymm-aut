@@ -5,6 +5,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+const url = `${process.env.DOMAIN}/api/update-ymm`;
+  
   console.log("📬 Product Created Webhook Received");
 
   const product = req.body;
