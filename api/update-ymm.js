@@ -1,3 +1,5 @@
+console.log("🚨 Vercel - update-ymm.js loaded successfully");
+
 // api/update-ymm.js
 import { createClient } from "@supabase/supabase-js";
 
