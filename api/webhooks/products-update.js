@@ -1,34 +1,26 @@
+export const config = {
+  runtime: "nodejs",
+};
+
 import fetch from "node-fetch";
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  const url = `${process.env.DOMAIN}/api/update-ymm`;
-
-  console.log("📬 Product Updated Webhook Received");
-
-  const product = req.body;
-
-  const payload = {
-    id: product.id,
-    handle: product.handle,
-    title: product.title,
-    description: product.body_html
-  };
+  console.log("DOMAIN =", process.env.DOMAIN);
 
   try {
-    await fetch(`${process.env.MY_YMM_API}/api/update-ymm`, {
+    const url = `${process.env.DOMAIN}/api/update-ymm`;
+
+    const resp = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(req.body),
     });
 
-    console.log("✅ YMM updated for product update");
-  } catch (err) {
-    console.error("❌ Update YMM failed:", err);
-  }
+    console.log("Update YMM status:", resp.status);
 
-  return res.status(200).json({ success: true });
+    res.status(200).send("ok");
+  } catch (err) {
+    console.error("Update YMM failed:", err);
+    res.status(500).send("error");
+  }
 }
