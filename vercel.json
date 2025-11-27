@@ -1,0 +1,13 @@
+{
+  "version": 3,
+  "routes": [
+    {
+      "src": "/api/webhooks/(.*)",
+      "dest": "/api/webhooks/$1.js"
+    },
+    {
+      "src": "/api/update-ymm",
+      "dest": "/api/update-ymm.js"
+    }
+  ]
+}
