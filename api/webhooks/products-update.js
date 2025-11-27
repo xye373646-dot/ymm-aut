@@ -1,26 +1,28 @@
-export const config = {
-  runtime: "nodejs",
-};
-
-import fetch from "node-fetch";
+// api/webhooks/products-create.js
+export const config = { runtime: "nodejs" };
 
 export default async function handler(req, res) {
-  console.log("DOMAIN =", process.env.DOMAIN);
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const url = `${process.env.DOMAIN}/api/update-ymm`;
+    console.log("Product webhook received");
+    const product = req.body;
+
+    // 如果你想直接调 internal update handler：
+    const url = `${process.env.DOMAIN.replace(/\/$/, "")}/api/update-ymm`;
+
+    console.log("Forwarding to internal YMM:", url);
 
     const resp = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req.body),
+      body: JSON.stringify(product),
     });
 
     console.log("Update YMM status:", resp.status);
-
-    res.status(200).send("ok");
+    return res.status(200).send("ok");
   } catch (err) {
-    console.error("Update YMM failed:", err);
-    res.status(500).send("error");
+    console.error("Forward failed:", err);
+    return res.status(500).send("error");
   }
 }
