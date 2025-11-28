@@ -103,7 +103,7 @@ export default async function handler(req, res) {
         .from("ymm")
         .select("id")
         .eq("product_id", productId)
-        .eq("brand", brand)
+        .eq("make", brand)
         .eq("model", model)
         .eq("year", year)
         .limit(1);
@@ -115,7 +115,7 @@ export default async function handler(req, res) {
           .from("ymm")
           .update({
             title,
-            brand,
+            make,
             model,
             year,
             sku,
@@ -126,7 +126,7 @@ export default async function handler(req, res) {
           .eq("id", id);
 
         results.push({
-          brand,
+          make,
           model,
           year,
           action: upErr ? "update_failed" : "updated",
@@ -138,7 +138,7 @@ export default async function handler(req, res) {
             {
               product_id: productId,
               title,
-              brand,
+              make,
               model,
               year,
               sku,
@@ -150,7 +150,7 @@ export default async function handler(req, res) {
           ]);
 
         results.push({
-          brand,
+          make,
           model,
           year,
           action: insErr ? "insert_failed" : "inserted",
