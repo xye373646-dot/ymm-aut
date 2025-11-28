@@ -1,3 +1,4 @@
+console.log("Received product data:", product);
 console.log("🚨 Vercel - update-ymm.js loaded successfully");
 
 import { createClient } from "@supabase/supabase-js";
