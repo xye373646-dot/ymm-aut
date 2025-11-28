@@ -1,4 +1,3 @@
-console.log("Received product data:", product);
 console.log("🚨 Vercel - update-ymm.js loaded successfully");
 
 import { createClient } from "@supabase/supabase-js";
@@ -70,6 +69,12 @@ export default async function handler(req, res) {
 
   try {
     const product = req.body;
+    console.log("Received product data:", product); // 打印产品数据，检查是否正确接收到数据
+
+    if (!product) {
+      return res.status(400).json({ error: "Product data is missing" });
+    }
+
     const bodyHtml = product.body_html || "";
 
     // ★ 从产品页面表格解析YMM
@@ -115,7 +120,7 @@ export default async function handler(req, res) {
           .from("ymm")
           .update({
             title,
-            make,
+            make: brand,  // 注意这里 'make' 是表格字段
             model,
             year,
             sku,
@@ -125,8 +130,14 @@ export default async function handler(req, res) {
           })
           .eq("id", id);
 
+        if (upErr) {
+          console.error(`Error updating ${brand} ${model} ${year}:`, upErr);
+        } else {
+          console.log(`Successfully updated ${brand} ${model} ${year}`);
+        }
+
         results.push({
-          make,
+          make: brand,
           model,
           year,
           action: upErr ? "update_failed" : "updated",
@@ -138,7 +149,7 @@ export default async function handler(req, res) {
             {
               product_id: productId,
               title,
-              make,
+              make: brand,
               model,
               year,
               sku,
@@ -149,8 +160,14 @@ export default async function handler(req, res) {
             },
           ]);
 
+        if (insErr) {
+          console.error(`Error inserting ${brand} ${model} ${year}:`, insErr);
+        } else {
+          console.log(`Successfully inserted ${brand} ${model} ${year}`);
+        }
+
         results.push({
-          make,
+          make: brand,
           model,
           year,
           action: insErr ? "insert_failed" : "inserted",
@@ -164,3 +181,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: err.message });
   }
 }
+
